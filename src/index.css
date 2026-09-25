@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  When loaded via Module Federation into the shell, 
+  the shell's preflight/global styles already apply.
+  This file ensures standalone dev mode has base styles.
+*/

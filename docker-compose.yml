@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  tasks-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      secrets:
+        - github_token
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/tasks}
+    container_name: ui_tasks
+    networks:
+      - pmo_frontend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tasks.rule=PathPrefix(`/tasks/`)"
+      - "traefik.http.routers.tasks.priority=100"
+      - "traefik.http.routers.tasks.entrypoints=web"
+      - "traefik.http.services.tasks.loadbalancer.server.port=80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    environment:
+      - NODE_ENV=production
+
+networks:
+  pmo_frontend:
+    external: true
+
+secrets:
+  github_token:
+    file: ${HOME}/.docker/secrets/github_token.txt
