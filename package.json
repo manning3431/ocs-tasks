@@ -10,14 +10,14 @@
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
+        "@pmo/design-system": "github:manning3431/ocs-npm#main",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
-        "react-router-dom": "^6.26.0",
-        "@pmo/design-system": "git+https://github.com/manning3431/ocs-design-system#main",
-        "@pmo/tailwind-preset": "git+https://github.com/manning3431/ocs-npm#main"
+        "react-router-dom": "^6.26.0"
     },
     "devDependencies": {
         "@module-federation/vite": "^1.1.0",
+        "@types/node": "^20.19.43",
         "@types/react": "^18.3.3",
         "@types/react-dom": "^18.3.0",
         "@vitejs/plugin-react": "^4.3.1",

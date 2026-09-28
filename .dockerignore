@@ -17,3 +17,4 @@ docker-compose.override.yml
 *.swo
 coverage
 .nyc_output
+node_modules

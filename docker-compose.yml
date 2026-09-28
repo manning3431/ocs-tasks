@@ -1,4 +1,4 @@
-version: '3.8'
+#version: '3.8'
 
 services:
   tasks-ui:
@@ -11,15 +11,17 @@ services:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/tasks}
     container_name: ui_tasks
     networks:
-      - pmo_frontend
+      - pmo_network
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.tasks.rule=PathPrefix(`/tasks/`)"
-      - "traefik.http.routers.tasks.priority=100"
-      - "traefik.http.routers.tasks.entrypoints=web"
+      - "traefik.docker.network=pmo_frontend"
+      - "traefik.http.routers.tasks.rule=PathPrefix(`/tasks`)"
+      - "traefik.http.routers.tasks.priority=100"  # Higher than shell's priority
+      - "traefik.http.routers.tasks.middlewares=tasks-stripprefix"
+      - "traefik.http.middlewares.tasks-stripprefix.stripprefix.prefixes=/tasks"
       - "traefik.http.services.tasks.loadbalancer.server.port=80"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -28,9 +30,9 @@ services:
       - NODE_ENV=production
 
 networks:
-  pmo_frontend:
+  pmo_network:
     external: true
 
 secrets:
   github_token:
-    file: ${HOME}/.docker/secrets/github_token.txt
+    file: ./secrets/github_token.txt

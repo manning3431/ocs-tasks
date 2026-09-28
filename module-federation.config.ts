@@ -1,6 +1,6 @@
-import { defineConfig } from '@module-federation/vite';
+// module-federation.config.ts
 
-export default defineConfig({
+export default {
   name: 'tasks',
   filename: 'remoteEntry.js',
   exposes: {
@@ -23,4 +23,4 @@ export default defineConfig({
       eager: true,
     },
   },
-});
+};

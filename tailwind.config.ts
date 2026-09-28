@@ -1,5 +1,5 @@
 import type { Config } from 'tailwindcss';
-import pmoPreset from '@pmo/tailwind-preset';
+import pmoPreset from '@pmo/design-system/preset';
 
 export default {
   presets: [pmoPreset],
@@ -8,6 +8,6 @@ export default {
     './src/**/*.{ts,tsx,js,jsx}',
   ],
   corePlugins: {
-    preflight: false, // Shell already includes preflight; avoid duplicate resets
+    preflight: false,
   },
 } satisfies Config;
