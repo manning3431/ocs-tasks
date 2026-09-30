@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Button, Input } from '@pmo/design-system';
-import type { EntityOut, TaskCreateRequest, TaskOut } from '../types/task';
+import type { TaskCreateRequest, TaskOut } from '../types/task';
+import type { EntityOut} from '../types/entities';
 import { taskService } from '../services/taskService';
 import { entityService } from '../services/entityService';
 
@@ -22,7 +23,7 @@ export function CreateTaskModal({
   const [entityId, setEntityId] = useState('');
   const [statusCode, setStatusCode] = useState('active');
   const [dueDate, setDueDate] = useState('');
-  
+
   const [groupedEntities, setGroupedEntities] = useState<Record<string, EntityOut[]>>({});
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [entityFetchError, setEntityFetchError] = useState<string | null>(null);
@@ -30,20 +31,19 @@ export function CreateTaskModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch entities from the entities microservice when the modal opens
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
-    async function loadEntities() {
+    async function fetchEntities() {
       setLoadingEntities(true);
       setEntityFetchError(null);
       try {
         const response = await entityService.getGroupedEntities();
         if (isMounted) {
-          if (response.success && response.data) {
+          if (response && response.success && response.data) {
             setGroupedEntities(response.data);
-            // Default select the first entity
+            // Default selection to first available entity
             for (const group of Object.values(response.data)) {
               if (group.length > 0) {
                 setEntityId(group[0].entity_id);
@@ -51,13 +51,13 @@ export function CreateTaskModal({
               }
             }
           } else {
-            setEntityFetchError('Received invalid response from entity service.');
+            setEntityFetchError('Invalid response structure received from entities service.');
           }
         }
       } catch (err: unknown) {
         if (isMounted) {
-          const msg = err instanceof Error ? err.message : 'Failed to load entities';
-          setEntityFetchError(msg);
+          const message = err instanceof Error ? err.message : 'Failed to connect to entities service.';
+          setEntityFetchError(message);
         }
       } finally {
         if (isMounted) {
@@ -66,7 +66,8 @@ export function CreateTaskModal({
       }
     }
 
-    loadEntities();
+    fetchEntities();
+
     return () => {
       isMounted = false;
     };
@@ -112,7 +113,7 @@ export function CreateTaskModal({
 
     try {
       const response = await taskService.createTask(payload);
-      if (response.success && response.data) {
+      if (response && response.success && response.data) {
         onTaskCreated(response.data);
         onClose();
         setTitle('');
@@ -123,7 +124,7 @@ export function CreateTaskModal({
         setError('Failed to create task.');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+      const message = err instanceof Error ? err.message : 'Failed to save task.';
       setError(message);
     } finally {
       setSubmitting(false);
@@ -185,10 +186,10 @@ export function CreateTaskModal({
               Entity / Project <span className="text-red-500">*</span>
             </label>
             {loadingEntities ? (
-              <div className="text-sm text-surface-500 py-2">Loading entities from service...</div>
+              <div className="text-sm text-surface-500 py-2">Loading entities...</div>
             ) : entityFetchError ? (
               <div className="text-sm text-red-600 py-1">
-                {entityFetchError}. Check entities service endpoint.
+                {entityFetchError}
               </div>
             ) : (
               <select
@@ -198,7 +199,7 @@ export function CreateTaskModal({
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900"
               >
                 {!hasEntities ? (
-                  <option value="">No entities available</option>
+                  <option value="">No entities found</option>
                 ) : (
                   Object.entries(groupedEntities).map(([groupName, items]) => (
                     <optgroup key={groupName} label={groupName}>

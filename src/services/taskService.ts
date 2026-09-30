@@ -7,10 +7,7 @@ import type {
   TasksResponse,
 } from '../types/task';
 
-// Reads tasks-specific base URL, falls back to /api/tasks or /api
-const TASKS_BASE_URL =
-  import.meta.env.VITE_TASKS_API_BASE_URL ??
-  (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/tasks` : '/api');
+const TASKS_BASE_URL = import.meta.env.VITE_TASKS_API_BASE_URL ?? '/api/tasks';
 
 export interface TaskFilterParams {
   entity_id?: string;
@@ -27,14 +24,14 @@ export const taskService = {
       query.set('status_code', params.status_code);
     }
     const queryString = query.toString();
-    const endpoint = queryString ? `/tasks?${queryString}` : '/tasks';
+    const endpoint = queryString ? `/tasks?${queryString}` : 'v1/task_list';
     return apiClient.get<TasksResponse>(endpoint, {
       baseUrl: TASKS_BASE_URL,
     });
   },
 
   async createTask(payload: TaskCreateRequest): Promise<TaskResponse> {
-    return apiClient.post<TaskResponse>('/tasks', payload, {
+    return apiClient.post<TaskResponse>('/v1/task', payload, {
       baseUrl: TASKS_BASE_URL,
     });
   },

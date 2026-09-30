@@ -1,4 +1,6 @@
-#version: '3.8'
+# tasks-ui docker-compose.yml
+
+name: pmo-ui
 
 services:
   tasks-ui:
@@ -8,18 +10,20 @@ services:
       secrets:
         - github_token
       args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/tasks}
-    container_name: ui_tasks
+        VITE_TASKS_API_BASE_URL: ${VITE_TASKS_API_BASE_URL:-/api/tasks}
+        VITE_ENTITIES_API_BASE_URL: ${VITE_ENTITIES_API_BASE_URL:-/api/entities}
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    container_name: tasks-ui
+    restart: unless-stopped
     networks:
       - pmo_network
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=pmo_frontend"
-      - "traefik.http.routers.tasks.rule=PathPrefix(`/tasks`)"
-      - "traefik.http.routers.tasks.priority=100"  # Higher than shell's priority
-      - "traefik.http.routers.tasks.middlewares=tasks-stripprefix"
-      - "traefik.http.middlewares.tasks-stripprefix.stripprefix.prefixes=/tasks"
-      - "traefik.http.services.tasks.loadbalancer.server.port=80"
+      - "traefik.docker.network=pmo_network"
+      - "traefik.http.routers.tasks-ui.rule=PathPrefix(`/tasks`)"
+      - "traefik.http.routers.tasks-ui.entrypoints=web"
+      - "traefik.http.routers.tasks-ui.priority=100"
+      - "traefik.http.services.tasks-ui.loadbalancer.server.port=80"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/health"]
       interval: 30s

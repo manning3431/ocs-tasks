@@ -15,6 +15,9 @@ export default defineConfig({
        '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  optimizeDeps: {
+    exclude: ['@pmo/design-system'],
+  },
   build: {
     target: 'esnext',
     minify: 'esbuild',
@@ -33,6 +36,9 @@ export default defineConfig({
     strictPort: true,
     headers: {
       'Access-Control-Allow-Origin': '*',
+    },
+    watch: {
+      ignored: ['!**/node_modules/@pmo/design-system/**'],
     },
   },
   preview: {

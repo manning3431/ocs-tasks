@@ -1,16 +1,13 @@
 // src/services/entityService.ts
 
 import { apiClient } from './apiClient';
-import type { EntitiesGroupedResponse } from '../types/task';
+import type { EntitiesGroupedResponse } from '../types/entities';
 
-// Reads entity-specific base URL, falls back to /api/entities or /api
-const ENTITIES_BASE_URL =
-  import.meta.env.VITE_ENTITIES_API_BASE_URL ??
-  (import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/entities` : '/api');
+const ENTITIES_BASE_URL = import.meta.env.VITE_ENTITIES_API_BASE_URL ?? '/api/entities';
 
 export const entityService = {
   async getGroupedEntities(): Promise<EntitiesGroupedResponse> {
-    return apiClient.get<EntitiesGroupedResponse>('/entities', {
+    return apiClient.get<EntitiesGroupedResponse>('/v1/entity_list', {
       baseUrl: ENTITIES_BASE_URL,
     });
   },
