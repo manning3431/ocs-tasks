@@ -7,9 +7,9 @@ import {
   createTask,
   updateTask,
   deleteTask,
-} from "../services/tasksService";
+} from "../services/taskService";
 import type { Task, CreateTaskPayload, TaskStatus } from "../types/task";
-import type { EntityType, Entity, EntityRelationship } from "../types/entity";
+import type { EntityType, Entity, EntityRelationship } from "../types/entities";
 
 interface UseTasksState {
   tasks: Task[];
