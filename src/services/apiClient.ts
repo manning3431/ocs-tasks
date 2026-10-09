@@ -7,10 +7,26 @@ interface RequestOptions extends RequestInit {
 
 const DEFAULT_API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
+async function parseJsonBody<T>(response: Response, method: string, url: string): Promise<T> {
+  const contentType = response.headers.get('content-type') ?? 'unknown';
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const looksLikeHtml = /^\s*<(!doctype|html)/i.test(text);
+    throw new Error(
+      `Expected JSON from ${method} ${url} but received ${looksLikeHtml ? 'HTML' : contentType} ` +
+        `(HTTP ${response.status}). The request likely missed its API router or used the wrong base URL.`,
+    );
+  }
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const rootUrl = options.baseUrl ?? DEFAULT_API_BASE_URL;
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const url = `${rootUrl.replace(/\/+$/, '')}${cleanPath}`;
+  const method = options.method ?? 'GET';
   const headers = new Headers(options.headers);
 
   if (options.json !== undefined) {
@@ -28,7 +44,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   }
 
   if (!response.ok) {
-    let errorMessage = `API ${response.status}: ${response.statusText}`;
+    let errorMessage = `API ${response.status}: ${response.statusText} (${method} ${url})`;
     try {
       const errBody = await response.json();
       if (errBody && errBody.detail) {
@@ -42,7 +58,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new Error(errorMessage);
   }
 
-  return response.json() as Promise<T>;
+  return parseJsonBody<T>(response, method, url);
 }
 
 export const apiClient = {

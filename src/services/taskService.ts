@@ -43,8 +43,16 @@ export const taskService = {
       baseUrl: TASKS_BASE_URL,
     });
   },
-};
 
+  async updateTask(
+    taskId: string,
+    payload: Partial<TaskCreateRequest>,
+  ): Promise<TaskResponse> {
+    return apiClient.put<TaskResponse>(`/v1/task/${taskId}`, payload, {
+      baseUrl: TASKS_BASE_URL,
+    });
+  },
+};
 
 // FR2: Assignment Level dropdown source — entities.entity_type, no hardcoded list.
 export function fetchEntityTypes(): Promise<EntityType[]> {

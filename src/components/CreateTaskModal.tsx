@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Button, Input } from '@pmo/design-system';
 import type { TaskCreateRequest, TaskOut } from '../types/task';
-import type { EntityOut} from '../types/entities';
+import type { EntityOut } from '../types/entities';
 import { taskService } from '../services/taskService';
 import { entityService } from '../services/entityService';
 
@@ -11,13 +11,27 @@ interface CreateTaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTaskCreated: (createdTask: TaskOut) => void;
+  /** When provided, the modal opens in edit mode for this task. */
+  task?: TaskOut | null;
+  onTaskUpdated?: (updatedTask: TaskOut) => void;
 }
+
+const STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'active', label: 'Active / In Progress' },
+  { value: 'todo', label: 'To Do' },
+  { value: 'review', label: 'Review' },
+  { value: 'done', label: 'Done' },
+];
 
 export function CreateTaskModal({
   isOpen,
   onClose,
   onTaskCreated,
+  task = null,
+  onTaskUpdated,
 }: CreateTaskModalProps) {
+  const isEditMode = !!task;
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [entityId, setEntityId] = useState('');
@@ -31,6 +45,28 @@ export function CreateTaskModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const taskId = task?.task_id ?? null;
+  const taskEntityName = task?.entity_name ?? null;
+
+  // Populate / reset form fields whenever the modal opens or the target task changes
+  useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
+    if (task) {
+      setTitle(task.title ?? '');
+      setDescription(task.description ?? '');
+      setStatusCode(task.status_code ?? 'active');
+      setDueDate(task.due_date ? task.due_date.slice(0, 10) : '');
+    } else {
+      setTitle('');
+      setDescription('');
+      setStatusCode('active');
+      setDueDate('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, taskId]);
+
+  // Load entities and choose the initial selection
   useEffect(() => {
     if (!isOpen) return;
 
@@ -43,20 +79,34 @@ export function CreateTaskModal({
         if (isMounted) {
           if (response && response.success && response.data) {
             setGroupedEntities(response.data);
-            // Default selection to first available entity
-            for (const group of Object.values(response.data)) {
-              if (group.length > 0) {
-                setEntityId(group[0].entity_id);
-                break;
+
+            let selected = '';
+            if (taskEntityName) {
+              for (const group of Object.values(response.data)) {
+                const match = group.find((item) => item.entity_name === taskEntityName);
+                if (match) {
+                  selected = match.entity_id;
+                  break;
+                }
               }
             }
+            if (!selected && !taskEntityName) {
+              for (const group of Object.values(response.data)) {
+                if (group.length > 0) {
+                  selected = group[0].entity_id;
+                  break;
+                }
+              }
+            }
+            setEntityId(selected);
           } else {
             setEntityFetchError('Invalid response structure received from entities service.');
           }
         }
       } catch (err: unknown) {
         if (isMounted) {
-          const message = err instanceof Error ? err.message : 'Failed to connect to entities service.';
+          const message =
+            err instanceof Error ? err.message : 'Failed to connect to entities service.';
           setEntityFetchError(message);
         }
       } finally {
@@ -71,7 +121,7 @@ export function CreateTaskModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen]);
+  }, [isOpen, taskEntityName]);
 
   // Handle escape key
   useEffect(() => {
@@ -94,7 +144,7 @@ export function CreateTaskModal({
       setError('Title is required.');
       return;
     }
-    if (!entityId) {
+    if (!isEditMode && !entityId) {
       setError('Please select an entity.');
       return;
     }
@@ -102,26 +152,46 @@ export function CreateTaskModal({
     setSubmitting(true);
     setError(null);
 
-    const payload: TaskCreateRequest = {
-      title: title.trim(),
-      description: description.trim() ? description.trim() : null,
-      entity_id: entityId,
-      status_code: statusCode,
-      due_date: dueDate ? dueDate : null,
-      owner_actor_id: null,
-    };
-
     try {
-      const response = await taskService.createTask(payload);
-      if (response && response.success && response.data) {
-        onTaskCreated(response.data);
-        onClose();
-        setTitle('');
-        setDescription('');
-        setDueDate('');
-        setStatusCode('active');
+      if (isEditMode && task) {
+        const updatePayload: Partial<TaskCreateRequest> = {
+          title: title.trim(),
+          description: description.trim() ? description.trim() : null,
+          status_code: statusCode,
+          due_date: dueDate ? dueDate : null,
+        };
+        if (entityId) {
+          updatePayload.entity_id = entityId;
+        }
+
+        const response = await taskService.updateTask(task.task_id, updatePayload);
+        if (response && response.success && response.data) {
+          onTaskUpdated?.(response.data);
+          onClose();
+        } else {
+          setError('Failed to update task.');
+        }
       } else {
-        setError('Failed to create task.');
+        const payload: TaskCreateRequest = {
+          title: title.trim(),
+          description: description.trim() ? description.trim() : null,
+          entity_id: entityId,
+          status_code: statusCode,
+          due_date: dueDate ? dueDate : null,
+          owner_actor_id: null,
+        };
+
+        const response = await taskService.createTask(payload);
+        if (response && response.success && response.data) {
+          onTaskCreated(response.data);
+          onClose();
+          setTitle('');
+          setDescription('');
+          setDueDate('');
+          setStatusCode('active');
+        } else {
+          setError('Failed to create task.');
+        }
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to save task.';
@@ -132,6 +202,13 @@ export function CreateTaskModal({
   };
 
   const hasEntities = Object.keys(groupedEntities).length > 0;
+
+  const statusOptions = STATUS_OPTIONS.some((o) => o.value === statusCode)
+    ? STATUS_OPTIONS
+    : [
+        ...STATUS_OPTIONS,
+        { value: statusCode, label: task?.status_label ?? statusCode },
+      ];
 
   return (
     <div
@@ -147,9 +224,14 @@ export function CreateTaskModal({
     >
       <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-surface-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-surface-200 flex items-center justify-between">
-          <h3 id="modal-title" className="text-lg font-semibold text-surface-900">
-            Create Task
-          </h3>
+          <div>
+            <h3 id="modal-title" className="text-lg font-semibold text-surface-900">
+              {isEditMode ? 'Edit Task' : 'Create Task'}
+            </h3>
+            {isEditMode && task?.display_id && (
+              <p className="text-xs font-mono text-surface-500 mt-0.5">{task.display_id}</p>
+            )}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -183,14 +265,12 @@ export function CreateTaskModal({
 
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">
-              Entity / Project <span className="text-red-500">*</span>
+              Entity / Project {!isEditMode && <span className="text-red-500">*</span>}
             </label>
             {loadingEntities ? (
               <div className="text-sm text-surface-500 py-2">Loading entities...</div>
             ) : entityFetchError ? (
-              <div className="text-sm text-red-600 py-1">
-                {entityFetchError}
-              </div>
+              <div className="text-sm text-red-600 py-1">{entityFetchError}</div>
             ) : (
               <select
                 value={entityId}
@@ -201,15 +281,22 @@ export function CreateTaskModal({
                 {!hasEntities ? (
                   <option value="">No entities found</option>
                 ) : (
-                  Object.entries(groupedEntities).map(([groupName, items]) => (
-                    <optgroup key={groupName} label={groupName}>
-                      {items.map((item) => (
-                        <option key={item.entity_id} value={item.entity_id}>
-                          {item.entity_name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))
+                  <>
+                    {isEditMode && (
+                      <option value="">
+                        {entityId ? 'Select entity' : `Unchanged${taskEntityName ? ` (${taskEntityName})` : ''}`}
+                      </option>
+                    )}
+                    {Object.entries(groupedEntities).map(([groupName, items]) => (
+                      <optgroup key={groupName} label={groupName}>
+                        {items.map((item) => (
+                          <option key={item.entity_id} value={item.entity_id}>
+                            {item.entity_name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </>
                 )}
               </select>
             )}
@@ -217,26 +304,23 @@ export function CreateTaskModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-surface-700 mb-1">
-                Status
-              </label>
+              <label className="block text-sm font-medium text-surface-700 mb-1">Status</label>
               <select
                 value={statusCode}
                 onChange={(e) => setStatusCode(e.target.value)}
                 disabled={submitting}
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900"
               >
-                <option value="active">Active / In Progress</option>
-                <option value="todo">To Do</option>
-                <option value="review">Review</option>
-                <option value="done">Done</option>
+                {statusOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-surface-700 mb-1">
-                Due Date
-              </label>
+              <label className="block text-sm font-medium text-surface-700 mb-1">Due Date</label>
               <input
                 type="date"
                 value={dueDate}
@@ -248,9 +332,7 @@ export function CreateTaskModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-surface-700 mb-1">
-              Description
-            </label>
+            <label className="block text-sm font-medium text-surface-700 mb-1">Description</label>
             <textarea
               rows={3}
               value={description}
@@ -262,20 +344,21 @@ export function CreateTaskModal({
           </div>
 
           <div className="pt-4 border-t border-surface-200 flex justify-end space-x-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={submitting}
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
               Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting || loadingEntities || !hasEntities}
+              disabled={submitting || loadingEntities || (!isEditMode && !hasEntities)}
             >
-              {submitting ? 'Creating...' : 'Create Task'}
+              {submitting
+                ? isEditMode
+                  ? 'Saving...'
+                  : 'Creating...'
+                : isEditMode
+                  ? 'Save Changes'
+                  : 'Create Task'}
             </Button>
           </div>
         </form>

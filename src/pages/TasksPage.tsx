@@ -39,6 +39,7 @@ export function TasksPage() {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [selectedTask, setSelectedTask] = useState<TaskOut | null>(null);
 
   const loadTasks = useCallback(async () => {
     setLoading(true);
@@ -64,6 +65,27 @@ export function TasksPage() {
     setTasks((prev) => [newTask, ...prev]);
   };
 
+  const handleTaskUpdated = (updatedTask: TaskOut) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.task_id === updatedTask.task_id ? updatedTask : t)),
+    );
+  };
+
+  const openCreateModal = () => {
+    setSelectedTask(null);
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (task: TaskOut) => {
+    setSelectedTask(task);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setSelectedTask(null);
+  };
+
   const selectedStatusCode = optionToStatusCode[statusFilter] ?? '';
 
   const filteredTasks = tasks.filter((task: TaskOut) => {
@@ -79,7 +101,7 @@ export function TasksPage() {
     if (searchQuery.trim()) {
       const term = searchQuery.toLowerCase();
       const matchTitle = task.title.toLowerCase().includes(term);
-      const matchEntity = task.entity_name.toLowerCase().includes(term);
+      const matchEntity = (task.entity_name ?? '').toLowerCase().includes(term);
       const matchDisplayId = task.display_id.toLowerCase().includes(term);
       if (!matchTitle && !matchEntity && !matchDisplayId) {
         return false;
@@ -120,7 +142,7 @@ export function TasksPage() {
         <span className="text-surface-700 text-sm">{row.entity_name}</span>
       ),
       sortable: true,
-      sortValue: (row: TaskOut) => row.entity_name,
+      sortValue: (row: TaskOut) => row.entity_name ?? '',
     },
     {
       id: 'status',
@@ -161,7 +183,7 @@ export function TasksPage() {
       <PageHeader
         title="Tasks"
         primaryActionLabel="Create Task"
-        onPrimaryAction={() => setIsModalOpen(true)}
+        onPrimaryAction={openCreateModal}
       />
 
       <Card padded>
@@ -194,6 +216,7 @@ export function TasksPage() {
             columns={columns}
             rows={filteredTasks}
             getRowKey={(row: TaskOut) => row.task_id}
+            onRowClick={openEditModal}
             emptyMessage="No tasks found matching your filters."
           />
         )}
@@ -201,8 +224,10 @@ export function TasksPage() {
 
       <CreateTaskModal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={closeModal}
         onTaskCreated={handleTaskCreated}
+        task={selectedTask}
+        onTaskUpdated={handleTaskUpdated}
       />
     </div>
   );
