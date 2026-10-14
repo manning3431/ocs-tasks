@@ -4,8 +4,14 @@ import React, { useEffect, useState } from 'react';
 import { Button, Input } from '@pmo/design-system';
 import type { TaskCreateRequest, TaskOut } from '../types/task';
 import type { EntityOut } from '../types/entities';
+import type { ActorOut } from '../types/actors';
+import type { CommentOut } from '../types/comments';
 import { taskService } from '../services/taskService';
 import { entityService } from '../services/entityService';
+import { actorService } from '../services/actorService';
+import { commentService } from '../services/commentService';
+import { ActorSelect } from './ActorSelect';
+import { TaskComments } from './TaskComments';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -23,6 +29,28 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'done', label: 'Done' },
 ];
 
+const COMMENT_AUTHOR_STORAGE_KEY = 'pmo.tasks.commentAuthorId';
+
+function readStoredAuthorId(): string {
+  try {
+    return window.localStorage.getItem(COMMENT_AUTHOR_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storeAuthorId(actorId: string): void {
+  try {
+    if (actorId) {
+      window.localStorage.setItem(COMMENT_AUTHOR_STORAGE_KEY, actorId);
+    } else {
+      window.localStorage.removeItem(COMMENT_AUTHOR_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable; selection simply won't persist
+  }
+}
+
 export function CreateTaskModal({
   isOpen,
   onClose,
@@ -35,12 +63,24 @@ export function CreateTaskModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [entityId, setEntityId] = useState('');
+  const [ownerId, setOwnerId] = useState('');
   const [statusCode, setStatusCode] = useState('active');
   const [dueDate, setDueDate] = useState('');
 
   const [groupedEntities, setGroupedEntities] = useState<Record<string, EntityOut[]>>({});
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [entityFetchError, setEntityFetchError] = useState<string | null>(null);
+
+  const [actors, setActors] = useState<ActorOut[]>([]);
+  const [loadingActors, setLoadingActors] = useState(false);
+  const [actorFetchError, setActorFetchError] = useState<string | null>(null);
+
+  const [comments, setComments] = useState<CommentOut[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [commentDraft, setCommentDraft] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [commentAuthorId, setCommentAuthorId] = useState<string>(readStoredAuthorId);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,16 +92,19 @@ export function CreateTaskModal({
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setCommentDraft('');
     if (task) {
       setTitle(task.title ?? '');
       setDescription(task.description ?? '');
       setStatusCode(task.status_code ?? 'active');
       setDueDate(task.due_date ? task.due_date.slice(0, 10) : '');
+      setOwnerId(task.owner_actor_id ?? '');
     } else {
       setTitle('');
       setDescription('');
       setStatusCode('active');
       setDueDate('');
+      setOwnerId('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, taskId]);
@@ -123,10 +166,90 @@ export function CreateTaskModal({
     };
   }, [isOpen, taskEntityName]);
 
-  // Handle escape key
+  // Load actors for the owner and comment-author dropdowns
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let isMounted = true;
+    async function fetchActors() {
+      setLoadingActors(true);
+      setActorFetchError(null);
+      try {
+        const response = await actorService.getActors();
+        if (isMounted) {
+          if (response && response.success && Array.isArray(response.data)) {
+            setActors(response.data);
+          } else {
+            setActorFetchError('Invalid response structure received from actors service.');
+          }
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : 'Failed to load actors.';
+          setActorFetchError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingActors(false);
+        }
+      }
+    }
+
+    fetchActors();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
+
+  // Load comment history (edit mode only)
+  useEffect(() => {
+    if (!isOpen || !taskId) {
+      setComments([]);
+      setCommentsError(null);
+      return;
+    }
+
+    let isMounted = true;
+    async function fetchComments(id: string) {
+      setLoadingComments(true);
+      setCommentsError(null);
+      try {
+        const response = await commentService.getComments(id);
+        if (isMounted) {
+          if (response && response.success && Array.isArray(response.data)) {
+            const sorted = [...response.data].sort(
+              (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+            );
+            setComments(sorted);
+          } else {
+            setCommentsError('Invalid response structure received from comments service.');
+          }
+        }
+      } catch (err: unknown) {
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : 'Failed to load comments.';
+          setCommentsError(message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoadingComments(false);
+        }
+      }
+    }
+
+    fetchComments(taskId);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, taskId]);
+
+  // Handle escape key (skip events already handled by an inner control such as the actor dropdown)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting) {
+      if (e.defaultPrevented) return;
+      if (e.key === 'Escape' && !submitting && !postingComment) {
         onClose();
       }
     };
@@ -134,9 +257,48 @@ export function CreateTaskModal({
       window.addEventListener('keydown', handleKeyDown);
     }
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, submitting, onClose]);
+  }, [isOpen, submitting, postingComment, onClose]);
 
   if (!isOpen) return null;
+
+  const handleAuthorChange = (actorId: string) => {
+    setCommentAuthorId(actorId);
+    storeAuthorId(actorId);
+  };
+
+  // Returns true when there was nothing to post or the comment was saved
+  const postComment = async (): Promise<boolean> => {
+    if (!task) return false;
+    const text = commentDraft.trim();
+    if (!text) return true;
+
+    setPostingComment(true);
+    try {
+      const response = await commentService.createComment(task.task_id, {
+        comment: text,
+        owner_actor_id: commentAuthorId ? commentAuthorId : null,
+      });
+      if (response && response.success && response.data) {
+        const created = response.data;
+        setComments((prev) => [created, ...prev]);
+        setCommentDraft('');
+        return true;
+      }
+      setError('Failed to add comment.');
+      return false;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to add comment.';
+      setError(message);
+      return false;
+    } finally {
+      setPostingComment(false);
+    }
+  };
+
+  const handleAddComment = async () => {
+    setError(null);
+    await postComment();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,11 +316,18 @@ export function CreateTaskModal({
 
     try {
       if (isEditMode && task) {
+        // Don't silently drop a typed-but-unposted comment
+        if (commentDraft.trim()) {
+          const posted = await postComment();
+          if (!posted) return;
+        }
+
         const updatePayload: Partial<TaskCreateRequest> = {
           title: title.trim(),
           description: description.trim() ? description.trim() : null,
           status_code: statusCode,
           due_date: dueDate ? dueDate : null,
+          owner_actor_id: ownerId ? ownerId : null,
         };
         if (entityId) {
           updatePayload.entity_id = entityId;
@@ -178,7 +347,7 @@ export function CreateTaskModal({
           entity_id: entityId,
           status_code: statusCode,
           due_date: dueDate ? dueDate : null,
-          owner_actor_id: null,
+          owner_actor_id: ownerId ? ownerId : null,
         };
 
         const response = await taskService.createTask(payload);
@@ -188,6 +357,7 @@ export function CreateTaskModal({
           setTitle('');
           setDescription('');
           setDueDate('');
+          setOwnerId('');
           setStatusCode('active');
         } else {
           setError('Failed to create task.');
@@ -202,6 +372,7 @@ export function CreateTaskModal({
   };
 
   const hasEntities = Object.keys(groupedEntities).length > 0;
+  const busy = submitting || postingComment;
 
   const statusOptions = STATUS_OPTIONS.some((o) => o.value === statusCode)
     ? STATUS_OPTIONS
@@ -217,12 +388,12 @@ export function CreateTaskModal({
       aria-labelledby="modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !submitting) {
+        if (e.target === e.currentTarget && !busy) {
           onClose();
         }
       }}
     >
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-2xl border border-surface-200 overflow-hidden">
+      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-surface-200">
         <div className="px-6 py-4 border-b border-surface-200 flex items-center justify-between">
           <div>
             <h3 id="modal-title" className="text-lg font-semibold text-surface-900">
@@ -235,7 +406,7 @@ export function CreateTaskModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={submitting}
+            disabled={busy}
             className="text-surface-400 hover:text-surface-600 focus:outline-none p-1 rounded-md"
             aria-label="Close modal"
           >
@@ -258,7 +429,7 @@ export function CreateTaskModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Design new dashboard layout"
-              disabled={submitting}
+              disabled={busy}
               required
             />
           </div>
@@ -275,7 +446,7 @@ export function CreateTaskModal({
               <select
                 value={entityId}
                 onChange={(e) => setEntityId(e.target.value)}
-                disabled={submitting || !hasEntities}
+                disabled={busy || !hasEntities}
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900"
               >
                 {!hasEntities ? (
@@ -308,7 +479,7 @@ export function CreateTaskModal({
               <select
                 value={statusCode}
                 onChange={(e) => setStatusCode(e.target.value)}
-                disabled={submitting}
+                disabled={busy}
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900"
               >
                 {statusOptions.map((opt) => (
@@ -325,10 +496,31 @@ export function CreateTaskModal({
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
-                disabled={submitting}
+                disabled={busy}
                 className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900"
               />
             </div>
+          </div>
+
+          <div>
+            <label
+              htmlFor="task-owner"
+              className="block text-sm font-medium text-surface-700 mb-1"
+            >
+              Owner
+            </label>
+            <ActorSelect
+              id="task-owner"
+              actors={actors}
+              value={ownerId}
+              onChange={setOwnerId}
+              disabled={busy}
+              loading={loadingActors}
+              error={actorFetchError}
+            />
+            {actorFetchError && (
+              <p className="mt-1 text-xs text-red-600">{actorFetchError}</p>
+            )}
           </div>
 
           <div>
@@ -338,19 +530,36 @@ export function CreateTaskModal({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional details or context..."
-              disabled={submitting}
+              disabled={busy}
               className="w-full px-3 py-2 border border-surface-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-surface-900 resize-y"
             />
           </div>
 
+          {isEditMode && (
+            <TaskComments
+              comments={comments}
+              loading={loadingComments}
+              loadError={commentsError}
+              draft={commentDraft}
+              onDraftChange={setCommentDraft}
+              onAdd={handleAddComment}
+              posting={postingComment}
+              disabled={submitting}
+              actors={actors}
+              actorsLoading={loadingActors}
+              authorId={commentAuthorId}
+              onAuthorChange={handleAuthorChange}
+            />
+          )}
+
           <div className="pt-4 border-t border-surface-200 flex justify-end space-x-3">
-            <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
             <Button
               type="submit"
               variant="primary"
-              disabled={submitting || loadingEntities || (!isEditMode && !hasEntities)}
+              disabled={busy || loadingEntities || (!isEditMode && !hasEntities)}
             >
               {submitting
                 ? isEditMode
